@@ -53,18 +53,78 @@
         2. `migrate_force_v1` is used to force migrate to version 1(in case of dirty migration, force migrate to this version to fix errors).
 8. Gorm can run 3-5x slower than normal DB/SQL calls according to some benchmarks on the internet. **FIND THIS !!!!**
 9. SQL-C generates the code first, which is then integrated, hence any errors are informed already whilst generation of these files.
+    Ways to implement CRUD:\ 
     <img src="crudServices.png" />
-    1. `brew install kyleconroy/sqlc/sqlc`, `sqlc help`
-    2. [Two configuration versions](https://docs.sqlc.dev/en/stable/reference/config.html#): 1 and 2.
+    1. DB/SQL [QueryRowContext](https://pkg.go.dev/database/sql#example-DB.QueryRowContext) 
+    2. Gorm's functions refers to the CRUD Interface functions mentioned [here](https://gorm.io/docs/create.html). You would need to also use the functions in the Associations section to make gorm understand the associations between various fields.
+    3. sql/x - extension on db/sql so that struc/ slice can be formed from results of SQL queries using functions such as [Get, Select, StructScan](https://pkg.go.dev/github.com/jmoiron/sqlx#readme-usage).
+    4. SQL/C - read the first 3 steps of the [documentation](https://docs.sqlc.dev/en/stable/).
+        1. Since SQL/C processes these queries supplied to it, any errors will now be thrown at **compile time**.
+        2. **Note**: MySQL is now supported(image is old).
+        3. Even this is an extension on `database/sql` (observe `accounts.sql.go`).
+    2. `brew install kyleconroy/sqlc/sqlc`, `sqlc help`
+10. Instead of using the go mod init approach, we created folders inside db(sqlc) which will house the go files created by sqlc.
+    1. `sqlc init` was run before directory creation, to create the `sqlc.yaml` config file,using either of the [Two configuration versions](https://docs.sqlc.dev/en/stable/reference/config.html#): 1 and 2.
+    2. `make sqlc` will create the db/{accounts.sql.go,db.go,models.go} files - anytime this command is executed, the **files** that **exist earlier** are **overwritten**.
+    3. `db/query/accounts.sql` ---> `db/sqlc/accounts.sql.go`, which now contains custom golang functions for creating an account, listing accounts, fetching a particular account, because these were the `SQLs` defined in `accounts.sql`.
+    4. ```go
+        return &Queries{db: db}
+        ``` 
+        this is a pointer notation of creating a struct(`Queries` is the struct here) in Go, with db field = db passed as an argument to the function `func New(db DBTX) *Queries`. \
+        Note(could be removed after polishing this README): we can have structs that implement only certain functions of an interface.
+    5. A variable declared as a particular type of interface can trigger any of the methods of this interface that are implemented by this specific data-type.
+        ```go
+        package main
+        import (
+            "fmt"
+        )
+
+        type geometry interface {
+            area() float64
+            perim() float64
+        }
+        type rect struct {
+            width, height float64
+        }
+
+        func (r rect) area() float64 { // interface methods
+            return r.width * r.height // implemented for rect struct
+        }
+
+        type circle struct {
+            radius float64
+        }
+
+        func (c circle) area() float64 { // interface methods
+            return math.Pi * c.radius * c.radius // implemented for circle struct
+        }
+        func (c circle) perim() float64 {
+            return 2 * math.Pi * c.radius
+        }
+
+        func measure(g geometry) {
+            fmt.Println(g)
+            fmt.Println(g.area())
+            fmt.Println(g.perim())
+        }
+
+        func main() { 
+            r := rect{width: 3, height: 4}
+            c := circle{radius: 5}
+            fmt.Println(r.area())
+        }
+        ```
+        1. `measure(r)` will fail because there is no implementation of `perim()` method for the `struct rect`, whereas `measure(c)` will be sucessful.
 10. **How did SQLC create models for entries and transfers when accounts.sql(inside db/query) only had create statement for Accounts?**
     1. if the accounts.sql file is messed up, an error is thrown, hence not creating the further `.go` files.
+
 
 # Why DB Migrations?
 1. Change of schema - mutliple devs can update the schema at the same time, which schema to keep, which to reject, or if both schemas are right but different due to , say different columns, then how to merge?
 2. Change of the engine itself(say from postgres to MySQL)
     1. usual pattern: use SQLite while developing, change to Postgres/MySQL while deploying - implementing this change requires db migration.
 3. To Trigger/capture changes in the schema
-    1. the 0001_up.sql, 0002_up.sql... and 0001_down.sql, 0002_down.sql... keep the schema dynamic(in code-form , rather than a hardcoded one).
+    1. the `0001_up.sql`, `0002_up.sql`... and `0001_down.sql`, `0002_down.sql`... keep the schema dynamic(in code-form , rather than a hardcoded one).
 4. Migration is nothing but a *schema creating SQL script*, translating the DB from one state to another.
     1. Say in the [experiment-2 example(migrations-related)](#exp2_db_migration), `first-state = DB{accounts}`, `second-state = DB{accounts, entries}`, `third-state = DB{accounts, entries, transfers}`.
     2. States are denoted by the `schema_migrations` table, with a column called `version`.
