@@ -63,7 +63,7 @@
         2. **Note**: MySQL is now supported(image is old).
         3. Even this is an extension on `database/sql` (observe `accounts.sql.go`).
     2. `brew install kyleconroy/sqlc/sqlc`, `sqlc help`
-10. Instead of using the go mod init approach, we created folders inside db(sqlc) which will house the go files created by sqlc.
+10. Instead of using the `go mod init` approach, we created folders inside `db(sqlc)` which will house the go files created by `sqlc`.
     1. `sqlc init` was run before directory creation, to create the `sqlc.yaml` config file,using either of the [Two configuration versions](https://docs.sqlc.dev/en/stable/reference/config.html#): 1 and 2.
     2. `make sqlc` will create the db/{accounts.sql.go,db.go,models.go} files - anytime this command is executed, the **files** that **exist earlier** are **overwritten**.
     3. `db/query/accounts.sql` ---> `db/sqlc/accounts.sql.go`, which now contains custom golang functions for creating an account, listing accounts, fetching a particular account, because these were the `SQLs` defined in `accounts.sql`.
@@ -115,8 +115,18 @@
         }
         ```
         1. `measure(r)` will fail because there is no implementation of `perim()` method for the `struct rect`, whereas `measure(c)` will be sucessful.
+11. [`Meanings of :one, :many, :exec annotations`](https://docs.sqlc.dev/en/stable/reference/query-annotations.html) w.r.t. the `accounts.sql` file.
+    1. Not necessary to add `LIMIT` and `OFFSET` for the `:many` SQL Annotation.
+    2. 
 10. **How did SQLC create models for entries and transfers when accounts.sql(inside db/query) only had create statement for Accounts?**
-    1. if the accounts.sql file is messed up, an error is thrown, hence not creating the further `.go` files.
+    1. if the `accounts.sql` file is messed up, an error is thrown, hence not creating the further `.go` files.
+
+
+# How does `sqlc generate` work?
+1. `Dockerfile` runs `go run scripts/release.go -docker`.
+2. The `if *docker` snippet then runs the go build command via `exec.Command`(same as `os.system` in Python)
+    1. The entire command = `go build -a -ldflags -extldflags \"-static\" -X github.com/kyleconroy/sqlc/internal/cmd.version=1.8.0` (here I've put the latest version manually, but the snippet before this determines the actual version).
+1. `go build` creates a binary, which can then be [executed as](https://gobyexample.com/command-line-arguments) : `go build fileName.go ; ./fileName` - 
 
 
 # Why DB Migrations?
