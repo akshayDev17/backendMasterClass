@@ -125,8 +125,21 @@
 # How does `sqlc generate` work?
 1. `Dockerfile` runs `go run scripts/release.go -docker`.
 2. The `if *docker` snippet then runs the go build command via `exec.Command`(same as `os.system` in Python)
-    1. The entire command = `go build -a -ldflags -extldflags \"-static\" -X github.com/kyleconroy/sqlc/internal/cmd.version=1.8.0` (here I've put the latest version manually, but the snippet before this determines the actual version).
-1. `go build` creates a binary, which can then be [executed as](https://gobyexample.com/command-line-arguments) : `go build fileName.go ; ./fileName` - 
+    1. The entire command = `go build -a -ldflags -extldflags \"-static\" -X github.com/kyleconroy/sqlc/internal/cmd.version=1.8.0 -o /workspace/sqlc ./cmd/sqlc` (here I've put the latest version manually, but the snippet before this determines the actual version).
+1. `go build` creates a binary, which can then be [executed as](https://gobyexample.com/command-line-arguments) : `go build fileName.go ; ./fileName`.
+    1. [meanings](https://pkg.go.dev/cmd/go#hdr-Compile_packages_and_dependencies) of all valid flags with `go build`.
+    2. force rebuild all packages(`-a`), pass the flags listed in `-ldflags` to all future runs of [`go link`](https://pkg.go.dev/cmd/link) (this will refer to a file [src/cmd/cgo/doc.go](https://go.dev/src/cmd/cgo/doc.go), whose line 1024 is relevant) 
+        1. the flags passed to -ldflags are 
+            1. `-extldflags`
+                1. The space-separated strings following this are flags passed to the external linker.
+                2. using this means that an external linker is used.
+                3. Here, its `-static`
+                    1. static libraries [utilized](https://www.youtube.com/watch?v=-vp9cFQCQCo) at compile time
+                        1. as opposed to shared ones, which are utilized at run time, hence for them we need to have the app and the library at the same time.
+                        2. whereas for static libraries, the entire code in them is copied into the app at compile time, hence only the app is needed.
+                    2. hence the `-extldflags -static` means to use an external linker(`ld` in this case) and to only link static libraries of go.
+            2. `-X github.com/kyleconroy/sqlc/internal/cmd.version=1.8.0` - set the importpath's name to this github go package.
+            3. [linking dependencies in static libraries](https://stackoverflow.com/questions/7841920/how-do-static-libraries-do-linking-to-dependencies)
 
 
 # Why DB Migrations?
