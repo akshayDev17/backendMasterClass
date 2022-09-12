@@ -121,12 +121,11 @@
 10. **How did SQLC create models for entries and transfers when accounts.sql(inside db/query) only had create statement for Accounts?**
     1. if the `accounts.sql` file is messed up, an error is thrown, hence not creating the further `.go` files.
 
-
-# How does `sqlc generate` work?
+# SQLC Build
 1. `Dockerfile` runs `go run scripts/release.go -docker`.
 2. The `if *docker` snippet then runs the go build command via `exec.Command`(same as `os.system` in Python)
     1. The entire command = `go build -a -ldflags -extldflags \"-static\" -X github.com/kyleconroy/sqlc/internal/cmd.version=1.8.0 -o /workspace/sqlc ./cmd/sqlc` (here I've put the latest version manually, but the snippet before this determines the actual version).
-1. `go build` creates a binary, which can then be [executed as](https://gobyexample.com/command-line-arguments) : `go build fileName.go ; ./fileName`.
+3. `go build` creates a binary, which can then be [executed as](https://gobyexample.com/command-line-arguments) : `go build fileName.go ; ./fileName`.
     1. [meanings](https://pkg.go.dev/cmd/go#hdr-Compile_packages_and_dependencies) of all valid flags with `go build`.
     2. force rebuild all packages(`-a`), pass the flags listed in `-ldflags` to all future runs of [`go link`](https://pkg.go.dev/cmd/link) (this will refer to a file [src/cmd/cgo/doc.go](https://go.dev/src/cmd/cgo/doc.go), whose line 1024 is relevant) 
         1. the flags passed to -ldflags are 
@@ -140,7 +139,23 @@
                     2. hence the `-extldflags -static` means to use an external linker(`ld` in this case) and to only link static libraries of go.
             2. `-X github.com/kyleconroy/sqlc/internal/cmd.version=1.8.0` - set the importpath's name to this github go package.
             3. [linking dependencies in static libraries](https://stackoverflow.com/questions/7841920/how-do-static-libraries-do-linking-to-dependencies)
+    3. `-o workspace/sqlc` : the output binary of this `go build` run should be stored in this path.
+        1. Notice in the dockerfile, . is copied into /workspace and we then switch to [WORKDIR](https://www.educative.io/answers/what-is-the-workdir-command-in-docker), which is /workspace.(equivalent of `mkdir`+`cd`)
+    4. the [complete command for go build](https://pkg.go.dev/cmd/go#hdr-Compile_packages_and_dependencies) is `go build [-o output] [build flags] [packages]`
+        1. the `./cmd/sqlc` is the package being asked to compile + run.
+        2. use `go help packages`:
+        > Usually, \[packages\] is a list of import paths. \
+        Import paths beginning with "cmd/" only match source code in the Go repository.
+4. We now `cd` into `workspace/sqlc`.
 
+# How does `sqlc init` work?
+1. Observe the [`cmd/sqlc`](https://github.com/kyleconroy/sqlc/blob/v1.8.0/internal/cmd/cmd.go) package.
+    1. Observe the `initCmd` variable, which uses another package called [`cobra`](https://github.com/spf13/cobra/tree/v1.5.0) containing [commands](https://github.com/spf13/cobra/blob/v1.5.0/command.go).
+        1. Compare the values of Use, Short and Run with the outputs of `sqlc init -h`.
+        2. The Flag and Flags and FlagSet are all borrowed from a repo forked by [`spf13`](https://github.com/spf13/pflag/tree/v1.0.5) from ogier/pflag.
+    2. 
+
+# How does `sqlc generate` work?
 
 # Why DB Migrations?
 1. Change of schema - mutliple devs can update the schema at the same time, which schema to keep, which to reject, or if both schemas are right but different due to , say different columns, then how to merge?
