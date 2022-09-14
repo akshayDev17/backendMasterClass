@@ -153,9 +153,35 @@
     1. Observe the `initCmd` variable, which uses another package called [`cobra`](https://github.com/spf13/cobra/tree/v1.5.0) containing [commands](https://github.com/spf13/cobra/blob/v1.5.0/command.go).
         1. Compare the values of Use, Short and Run with the outputs of `sqlc init -h`.
         2. The Flag and Flags and FlagSet are all borrowed from a repo forked by [`spf13`](https://github.com/spf13/pflag/tree/v1.0.5) from ogier/pflag.
+        3. [`cmd.Flags()`](https://github.com/spf13/cobra/blob/v1.5.0/command.go#L1466) --> [`c.flags`](https://github.com/spf13/cobra/blob/06b06a9dc9f9f5eba93c552b2532a3da64ef9877/command.go#L133) is a FlagSet pointer(pointing to a list of flags)
+            1. this will be nil for the very first run but after that will be initialized.
+            2. [`FlagSet`](https://github.com/spf13/pflag/blob/v1.0.5/flag.go#L138) from ogier/pflag
+            3. [`Lookup`](https://github.com/spf13/pflag/blob/v1.0.5/flag.go#L348) method implemented by the FlagSet struct.
+            4. 
     2. 
 
 # How does `sqlc generate` work?
+
+# Unit Test for CRUD Operations
+1. Golang convention - put the test file(`account_test.go`) in the same folder as the code.
+2. created main_test.go to house the connection object to DB
+    1. [`lib/pq`]() was installed since we lack a psql driver to establish a connection, the `database/sql` only provides a Golang-based interface to communicate with a pre-existing driver. \
+        Also mentioned in [Getting Started with Postgres in sqlc](https://docs.sqlc.dev/en/stable/tutorials/getting-started-postgresql.html).
+    2. `go get lib/pq` will  fail as installing packages using go get is deprecated, use go install instead.
+    3. Hence, a go mod file was created:
+        ```bash
+        go mod init my/backendMasterClass
+        go get github.com/lib/pq # adds github.com/lib/pq as required package in go.mod file
+        go install # installs all packages specified in go.mod
+        ```
+    4. Running Test Functions:
+        ```bash
+        go test -run '' # all tests
+        go test -run ^TestMain # run all functions in all .go files in the current directory having name like TestMain%
+        ```
+        1. if the import `_ "github.com/lib/pq"` is commented, then the test will fail, since it doesn't have the driver to connect to.
+        2. TestMain is itself [not a testing function](https://medium.com/goingogo/why-use-testmain-for-testing-in-go-dafb52b406bc), it rather runs all the Testing functions in the current directory(when `m.Run()` is called).
+3. For checking test results, [stretchr/testify](https://github.com/stretchr/testify/tree/v1.8.0) package was used.
 
 # Why DB Migrations?
 1. Change of schema - mutliple devs can update the schema at the same time, which schema to keep, which to reject, or if both schemas are right but different due to , say different columns, then how to merge?

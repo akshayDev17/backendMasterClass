@@ -20,7 +20,7 @@ RETURNING id, owner, balance, currency, created_at
 
 type CreateAccountParams struct {
 	Owner    string `json:"owner"`
-	Balance  string `json:"balance"`
+	Balance  int64  `json:"balance"`
 	Currency string `json:"currency"`
 }
 
@@ -105,8 +105,8 @@ WHERE id = $1
 `
 
 type UpdateAccountParams struct {
-	ID      int32  `json:"id"`
-	Balance string `json:"balance"`
+	ID      int32 `json:"id"`
+	Balance int64 `json:"balance"`
 }
 
 // exec since it doesn't return any data
