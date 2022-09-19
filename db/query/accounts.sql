@@ -19,8 +19,12 @@ ORDER BY owner
 LIMIT $1
 OFFSET $2;
 
-/* exec since it doesn't return any data */
--- name: UpdateAccount :exec
+-- name: UpdateAccount :one
 UPDATE accounts
 set balance = $2
+WHERE id = $1
+RETURNING *;
+
+-- name: DeleteAccount :exec
+DELETE FROM accounts
 WHERE id = $1;
