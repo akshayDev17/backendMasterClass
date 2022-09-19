@@ -1,3 +1,13 @@
+# Table of Contents
+1. [Developmental Steps](#developmental_steps)
+    1. [Unit Test](#unit_test)
+2. [SQLC Build](#sqlc_build)
+3. [How does `sqlc init` work?](#sqlc_init)
+4. [How does `sqlc generate` work?](#sqlc_gen)
+5. [Why DB Migrations?](#why_db_migration)
+6. [Experiments to be RUN](#experiments)
+
+# Developmental Steps<a name="developmental_steps"></a>
 1. Created DB Schema using [dbdiagram.io](dbdiagram.io) -> simple bank.sql \
     <img src="simple bank.png">
 2. Searched for PostGreS docker image on [hub.docker.com](https://hub.docker.com/_/postgres)
@@ -118,10 +128,48 @@
 11. [`Meanings of :one, :many, :exec annotations`](https://docs.sqlc.dev/en/stable/reference/query-annotations.html) w.r.t. the `accounts.sql` file.
     1. Not necessary to add `LIMIT` and `OFFSET` for the `:many` SQL Annotation.
     2. 
-10. **How did SQLC create models for entries and transfers when accounts.sql(inside db/query) only had create statement for Accounts?**
+12. **How did SQLC create models for entries and transfers when accounts.sql(inside db/query) only had create statement for Accounts?**
     1. if the `accounts.sql` file is messed up, an error is thrown, hence not creating the further `.go` files.
+13. ## Unit Test for CRUD Operations<a name="unit_test"></a>
+    1. Golang convention - put the test file(`account_test.go`) in the same folder as the code.
+    2. created main_test.go to house the connection object to DB
+        1. [`lib/pq`]() was installed since we lack a psql driver to establish a connection, the `database/sql` only provides a Golang-based interface to communicate with a pre-existing driver. \
+            Also mentioned in [Getting Started with Postgres in sqlc](https://docs.sqlc.dev/en/stable/tutorials/getting-started-postgresql.html).
+        2. `go get lib/pq` will  fail as installing packages using go get is deprecated, use go install instead.
+        3. Hence, a go mod file was created:
+            ```bash
+            go mod init my/backendMasterClass
+            go get github.com/lib/pq # adds github.com/lib/pq as required package in go.mod file
+            go install # installs all packages specified in go.mod
+            ```
+        4. Running Test Functions:
+            ```bash
+            go test -run '' # all tests
+            go test -run ^TestMain # run all functions in all .go files in the current directory having name like TestMain%
+            ```
+            1. if the import `_ "github.com/lib/pq"` is commented, then the test will fail, since it doesn't have the driver to connect to.
+            2. `TestMain` is itself [not a testing function](https://medium.com/goingogo/why-use-testmain-for-testing-in-go-dafb52b406bc), it rather runs all the Testing functions in the current directory(when `m.Run()` is called).
+        5. **GOLANG NAMING CONVENTION**: functions having `TestXXYY` as the name(starting with Test) and taking `testing.T` as an argument will be referred to as unit tests by golang, and will be always run unless otherwise.
+    3. *Testing C(create) operation* out of CRUD:
+        1. Created `account_test.go` to create a dummy account each time the `TestAccount` function is run.
+            1. created `util.go` belonging to package `util` which would use random generators for each field of `Account`.
+            2. Observe what is the module name in go.mod (here its my/backendMasterclass). \
+            Hence when util is to be imported into account_test.go, the path would be `<module_name>/<package_name>`
+        2. For checking test results, [stretchr/testify](https://github.com/stretchr/testify/tree/v1.8.0) package was used.
+            1. The require object was used to check for integrity and type constraints of each field of the created Account object.
+        3. Runnin test from .: `go test my/backendMasterclass/db/sqlc -cover -v -run TestCreateAccount^` (because test files are in db/sqlc)
+    4. *Testing R(retrieve/fetch/GET) operation* out of CRUD:
+        1. In `account_test.go`, added the function `TestGetAccount`
+        2. created a new account and fetched its detail into another account variable
+        3. compared them attribute wise using `require`.
+    5. *Testing U(update) operation*
+        1. Updated a newly created account.
+        2. Notice standard definition of update is `:exec` , we have given `:one`, and additionally `RETURNING *` , in `db/query/accounts.sql`
+    6. *Testing D(delete) operation*
+        1. `DeleteAccount` has again `:exec`
+        2. `require.Error` is used for the first time, as we want to assert that the deleted account's ID shouldn't exist in the table.
 
-# SQLC Build
+# SQLC Build<a name="sqlc_build"></a>
 1. `Dockerfile` runs `go run scripts/release.go -docker`.
 2. The `if *docker` snippet then runs the go build command via `exec.Command`(same as `os.system` in Python)
     1. The entire command = `go build -a -ldflags -extldflags \"-static\" -X github.com/kyleconroy/sqlc/internal/cmd.version=1.8.0 -o /workspace/sqlc ./cmd/sqlc` (here I've put the latest version manually, but the snippet before this determines the actual version).
@@ -148,7 +196,7 @@
         Import paths beginning with "cmd/" only match source code in the Go repository.
 4. We now `cd` into `workspace/sqlc`.
 
-# How does `sqlc init` work?
+# How does `sqlc init` work?<a name="sqlc_init"></a>
 1. Observe the [`cmd/sqlc`](https://github.com/kyleconroy/sqlc/blob/v1.8.0/internal/cmd/cmd.go) package.
     1. Observe the `initCmd` variable, which uses another package called [`cobra`](https://github.com/spf13/cobra/tree/v1.5.0) containing [commands](https://github.com/spf13/cobra/blob/v1.5.0/command.go).
         1. Compare the values of Use, Short and Run with the outputs of `sqlc init -h`.
@@ -160,30 +208,9 @@
             4. 
     2. 
 
-# How does `sqlc generate` work?
+# How does `sqlc generate` work?<a name="sqlc_gen"></a>
 
-# Unit Test for CRUD Operations
-1. Golang convention - put the test file(`account_test.go`) in the same folder as the code.
-2. created main_test.go to house the connection object to DB
-    1. [`lib/pq`]() was installed since we lack a psql driver to establish a connection, the `database/sql` only provides a Golang-based interface to communicate with a pre-existing driver. \
-        Also mentioned in [Getting Started with Postgres in sqlc](https://docs.sqlc.dev/en/stable/tutorials/getting-started-postgresql.html).
-    2. `go get lib/pq` will  fail as installing packages using go get is deprecated, use go install instead.
-    3. Hence, a go mod file was created:
-        ```bash
-        go mod init my/backendMasterClass
-        go get github.com/lib/pq # adds github.com/lib/pq as required package in go.mod file
-        go install # installs all packages specified in go.mod
-        ```
-    4. Running Test Functions:
-        ```bash
-        go test -run '' # all tests
-        go test -run ^TestMain # run all functions in all .go files in the current directory having name like TestMain%
-        ```
-        1. if the import `_ "github.com/lib/pq"` is commented, then the test will fail, since it doesn't have the driver to connect to.
-        2. TestMain is itself [not a testing function](https://medium.com/goingogo/why-use-testmain-for-testing-in-go-dafb52b406bc), it rather runs all the Testing functions in the current directory(when `m.Run()` is called).
-3. For checking test results, [stretchr/testify](https://github.com/stretchr/testify/tree/v1.8.0) package was used.
-
-# Why DB Migrations?
+# Why DB Migrations?<a name="why_db_migration"></a>
 1. Change of schema - mutliple devs can update the schema at the same time, which schema to keep, which to reject, or if both schemas are right but different due to , say different columns, then how to merge?
 2. Change of the engine itself(say from postgres to MySQL)
     1. usual pattern: use SQLite while developing, change to Postgres/MySQL while deploying - implementing this change requires db migration.
@@ -194,7 +221,7 @@
     2. States are denoted by the `schema_migrations` table, with a column called `version`.
     3. Version control for Databases.
 
-# Experiments to be RUN
+# Experiments to be RUN<a name="experiments"></a>
 
 ## Migration-related
 1. After the playlist is finished, try making the developing environment a sqlite one, and migrate to a staging env having a postgres DB.

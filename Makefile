@@ -12,4 +12,6 @@ migrate_force_v1:
 	migrate -path db/migration -database "postgresql://postgres:mysecretpassword@localhost:5432/simple_bank?sslmode=disable" -verbose force 1
 sqlc: 
 	sqlc generate
+test:
+	go test -v -cover ./...
 .PHONY: postgres createdb dropdb migrate_up sqlc
