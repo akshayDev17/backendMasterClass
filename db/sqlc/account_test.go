@@ -1,22 +1,24 @@
 package db
+
 import (
-	"testing"
 	"context"
-	"github.com/stretchr/testify/require"
-	util "my/backendMasterclass/util"
 	"database/sql"
+	util "my/backendMasterclass/util"
+	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
-func createRandomAccount(t *testing.T) Account{
+func createRandomAccount(t *testing.T) Account {
 	arg := CreateAccountParams{
-		Owner: util.RandomOwner(),
-		Balance: util.RandomMoney(),
+		Owner:    util.RandomOwner(),
+		Balance:  util.RandomMoney(),
 		Currency: util.RandomCurrency(),
 	}
 	account, err := testQueries.CreateAccount(context.Background(), arg) // testQueries defined in main_test.go, also CreateAccount is implemented by the DBTX type in account.sql.go
-	require.NoError(t, err) // checks if error is nil, fails the test if its not
-	require.NotEmpty(t, account)// account should not be empty
+	require.NoError(t, err)                                              // checks if error is nil, fails the test if its not
+	require.NotEmpty(t, account)                                         // account should not be empty
 
 	require.Equal(t, arg.Owner, account.Owner)
 	require.Equal(t, arg.Currency, account.Currency)
@@ -27,11 +29,11 @@ func createRandomAccount(t *testing.T) Account{
 
 	return account
 }
-func TestCreateAccount(t *testing.T){
+func TestCreateAccount(t *testing.T) {
 	createRandomAccount(t)
 }
 
-func TestGetAccount(t *testing.T){
+func TestGetAccount(t *testing.T) {
 	account_created := createRandomAccount(t)
 	account_fetched, err := testQueries.GetAccount(context.Background(), account_created.ID)
 	require.NoError(t, err)
@@ -43,10 +45,10 @@ func TestGetAccount(t *testing.T){
 	require.WithinDuration(t, account_created.CreatedAt, account_fetched.CreatedAt, time.Second)
 }
 
-func TestUpdateAccount(t *testing.T){
+func TestUpdateAccount(t *testing.T) {
 	account_created := createRandomAccount(t)
 	arg := UpdateAccountParams{
-		ID: account_created.ID,
+		ID:      account_created.ID,
 		Balance: util.RandomMoney(),
 	}
 
@@ -62,7 +64,7 @@ func TestUpdateAccount(t *testing.T){
 
 }
 
-func TestDeleteAccount(t *testing.T){
+func TestDeleteAccount(t *testing.T) {
 	account_created := createRandomAccount(t)
 	err := testQueries.DeleteAccount(context.Background(), account_created.ID)
 	require.NoError(t, err)
@@ -71,4 +73,21 @@ func TestDeleteAccount(t *testing.T){
 	require.Error(t, err)
 	require.EqualError(t, err, sql.ErrNoRows.Error())
 	require.Empty(t, deleted_account)
+}
+
+func TestListAccount(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		createRandomAccount(t)
+	}
+	arg := ListAccountParams{
+		Limit:  5,
+		Offset: 5,
+	}
+	accounts, err := testQueries.ListAccount(context.Background(), arg)
+	require.NoError(t, err)
+	require.Len(t, accounts, 5)
+
+	for _, account := range accounts {
+		require.NotEmpty(t, account)
+	}
 }
