@@ -168,6 +168,26 @@
     6. *Testing D(delete) operation*
         1. `DeleteAccount` has again `:exec`
         2. `require.Error` is used for the first time, as we want to assert that the deleted account's ID shouldn't exist in the table.
+14. DB Transactions
+    1. Need for them
+        1. Unit of work should be reliable and consistent, even during system failures.
+        2. isolate programs that access DB at the same time.
+    2. Example - *Transfer 500USD from Rob's Account(ID=123) to Bill's Account(ID=456)*
+        1. Fetch account1 and account2(verifying existence)
+        2. Check whether account1 and account2 have the same currencies.
+        3. Check whether account1's balance is \>= 500
+        4. Create a transfer record with from id = account1.ID, to_account = account2.ID , amount=500
+        5. Create 2 entry records
+            1. accountID = account1.ID, amount=-500
+            2. accountID = account2.ID, amount=+500
+        6. Update balance of both accounts.
+    3. **ACID**
+        1. *Atomicity*: all operations(unit tasks) of a transaction complete successfully or none do.
+        2. *Consistency*: DB state must be valid(all constraints hold).
+        3. *Isolation*: concurrent transactions shouldn't affect wach other.
+        4. *Durability*: A successful transaction should write data into persistent storage.
+    4. the `execTx` function is unexported, i.e. used only within the same package, [reference](https://stackoverflow.com/questions/40256161/exported-and-unexported-fields-in-go-language).
+    5. [sqlc reference](https://docs.sqlc.dev/en/stable/howto/transactions.html) for using transactions.
 
 # SQLC Build<a name="sqlc_build"></a>
 1. `Dockerfile` runs `go run scripts/release.go -docker`.
