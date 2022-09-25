@@ -289,6 +289,7 @@
             <img src="setupPostgresConnectionCI.png" />
         3. [Github Action for Postgres](https://docs.github.com/en/actions/using-containerized-services/creating-postgresql-service-containers)
             1. The env variables are defined w.r.t. postgres docker.
+        4. Migrate needed to be installed. indentation very important w.r.t. the commands given in `run` action.(| helps you specify multiple commands to be run as part of that step)
 
 # SQLC Build<a name="sqlc_build"></a>
 1. `Dockerfile` runs `go run scripts/release.go -docker`.
