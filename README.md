@@ -187,7 +187,82 @@
         3. *Isolation*: concurrent transactions shouldn't affect wach other.
         4. *Durability*: A successful transaction should write data into persistent storage.
     4. the `execTx` function is unexported, i.e. used only within the same package, [reference](https://stackoverflow.com/questions/40256161/exported-and-unexported-fields-in-go-language).
+    5. While updating the balances, a new sql is defined in the `db/sqlc/accounts.sql` file called `AddAccountBalance`, checkout how we add `sqlc.arg`.
     5. [sqlc reference](https://docs.sqlc.dev/en/stable/howto/transactions.html) for using transactions.
+15. SQL Update and Select happen concurrently, without waiting for other updates from other routines.
+    1. Hence launching multiple go routines as concurrent transactions might cause race conditions leading to improper data.
+    2. <img src="goroutines.png" />
+    3. Before comitting, no updates are actually made to the database, hence routine with id=36 reads balances before routine-id=34 updates the changes post transactions.
+    4. This doesn't mean each incoming transaction needs to be sequential, only those that **access the same data**.
+    5. Hence such transactions should acquire a lock which will prevent others from even running their read operation(`SELECT *`).
+    6. Rows matching the WHERE condition are locked by an incoming routine.
+        1. Hence From account ID will be locked by id=34, but id=35 blocks the To Account ID rows, thus causing a deadlock.
+    7. [Locking Clause for PostgreSQL](https://www.postgresql.org/docs/current/sql-select.html)(of which UPDATE is a part of).
+        1. Using the queries to check which process(concurrent transaction) acquires what locks, its actually concluded that proc-1 acquires locks for `transfers` and proc-2 for `accounts`.
+            1. [Psql lock monitoring](https://wiki.postgresql.org/wiki/Lock_Monitoring) \
+            Enlist processes that get blocked.
+            ```sql
+            SELECT 
+            blocked_locks.pid     AS blocked_pid,
+            blocked_activity.usename  AS blocked_user,
+            blocking_locks.pid     AS blocking_pid,
+            blocking_activity.usename AS blocking_user,
+            blocked_activity.query    AS blocked_statement,
+            blocking_activity.query   AS current_statement_in_blocking_process
+            FROM  pg_catalog.pg_locks         blocked_locks
+            JOIN pg_catalog.pg_stat_activity blocked_activity  ON blocked_activity.pid = blocked_locks.pid
+            JOIN pg_catalog.pg_locks         blocking_locks 
+            ON blocking_locks.locktype = blocked_locks.locktype
+            AND blocking_locks.database IS NOT DISTINCT FROM blocked_locks.database
+            AND blocking_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
+            AND blocking_locks.page IS NOT DISTINCT FROM blocked_locks.page
+            AND blocking_locks.tuple IS NOT DISTINCT FROM blocked_locks.tuple
+            AND blocking_locks.virtualxid IS NOT DISTINCT FROM blocked_locks.virtualxid
+            AND blocking_locks.transactionid IS NOT DISTINCT FROM blocked_locks.transactionid
+            AND blocking_locks.classid IS NOT DISTINCT FROM blocked_locks.classid
+            AND blocking_locks.objid IS NOT DISTINCT FROM blocked_locks.objid
+            AND blocking_locks.objsubid IS NOT DISTINCT FROM blocked_locks.objsubid
+            AND blocking_locks.pid != blocked_locks.pid
+            JOIN pg_catalog.pg_stat_activity blocking_activity ON blocking_activity.pid = blocking_locks.pid
+            WHERE NOT blocked_locks.granted;
+            ```
+            2. The sql query to cause the deadlock will work only in an interactive session with the DB , since we need to BEGIN a transaction.(not possible in TablePlus)
+            3. The following query lists all the lock types currently distributed amongst which processes.
+            ```sql
+            SELECT 
+            l.relation::regclass,
+            l.transactionid,
+            l.mode,
+            l.locktype,
+            l.GRANTED,
+            --          a.usename,
+            a.query,
+            --          a.query_start,
+            --          age(now(), a.query_start) AS "age",
+            a.pid
+            FROM pg_stat_activity a
+            JOIN pg_locks l ON l.pid = a.pid
+            where a.application_name='psql'
+            ORDER BY a.pid;
+            ```
+            3. The blocked query is trying to access a `transactionid` type lock but a lock with this transactionid value is already with `pid=1274` as an `ExclusiveLock`.
+        2. Even though these tables are different, they are related by the foreign key constraints, hence require the postgres to acquire a `SharedLock`.
+        3. Solution: the shared locks will not be acquired if Postgres is ensured that `ID` in `accounts` table will not be changed(when a row of `accounts` is being fetched), thus implying the fact that records in `transfers` will not be interfered with while `accounts` is updated.
+        4. `NO KEY UPDATE` is the proper Locking clause to be used here, w.r.t. `GetAccount()`.
+    8. Even after the above solution, we have deadlock between two transactions between same accounts if the first involves money transferred from `account1` and the second involves money transferred to `account1`.
+        1. This is a classic case of Hold-n-Wait.
+        ```sql
+        -- first transaction
+        BEGIN;
+        UPDATE accounts SET balance = balance + 10 WHERE id = 1 RETURNING *;
+        UPDATE accounts SET balance = balance - 10 WHERE id = 2 RETURNING *; -- this will be blocked by the first statement of 2nd transaction
+
+        -- second transaction
+        BEGIN;
+        UPDATE accounts SET balance = balance + 10 WHERE id = 2 RETURNING *;
+        UPDATE accounts SET balance = balance - 10 WHERE id = 1 RETURNING *;
+        ```
+        2. Solution: Keep the update order the same across all transactions. We know accountID is an int64 , hence always update the smaller ID first, then the larger ID.
 
 # SQLC Build<a name="sqlc_build"></a>
 1. `Dockerfile` runs `go run scripts/release.go -docker`.
