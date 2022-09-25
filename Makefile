@@ -2,6 +2,8 @@ postgres:
 	docker run --name postgres -p 5432:5432 -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=mysecretpassword -d postgres:latest
 createdb:
 	docker exec -it postgres createdb --username postgres --owner=postgres simple_bank
+connect_to_db:
+	docker exec -it postgres psql -U postgres -d simple_bank
 dropdb:
 	docker exec -it postgres dropdb simple_bank
 migrate_up:
