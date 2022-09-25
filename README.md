@@ -283,6 +283,12 @@
     2. Configure workflow for Go.(github repo-->actions tab)
         1. creates a new file .github/workflows/go.yml
     3. [Github Action docs](https://docs.github.com/en/actions)
+        1. `ci.yml` tells us that even `go.sum` is required for managing dependencies.
+            1. Difference between `run` and `uses`?(while defining a step)
+        2. this tells us that the github action was unable to connect to postgres DB.
+            <img src="setupPostgresConnectionCI.png" />
+        3. [Github Action for Postgres](https://docs.github.com/en/actions/using-containerized-services/creating-postgresql-service-containers)
+            1. The env variables are defined w.r.t. postgres docker.
 
 # SQLC Build<a name="sqlc_build"></a>
 1. `Dockerfile` runs `go run scripts/release.go -docker`.
