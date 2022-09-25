@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"runtime"
+	"strconv"
+	"strings"
 )
 
 // run DB queries individually, as well as in combination within a transaction.
@@ -19,6 +22,17 @@ func NewStore(db *sql.DB) *Store {
 		db:      db,
 		Queries: New(db), // from db.go
 	}
+}
+
+func goid() int {
+	var buf [64]byte
+	n := runtime.Stack(buf[:], false)
+	idField := strings.Fields(strings.TrimPrefix(string(buf[:n]), "goroutine "))[0]
+	id, err := strconv.Atoi(idField)
+	if err != nil {
+		panic(fmt.Sprintf("cannot get goroutine id: %v", err))
+	}
+	return id
 }
 
 func (store *Store) execTx(ctx context.Context, fn func(*Queries) error) error {
@@ -54,15 +68,37 @@ type TransferTxParams struct {
 }
 
 type TransferTxResult struct {
-	Transfer      Transfer `json:"transfer"`
-	FromAccountID int64    `json:"from_account_id"`
-	ToAccountID   int64    `json:"to_account_id"`
-	FromEntry     Entry    `json:"entry_from"` // post transaction entries
-	ToEntry       Entry    `json:"entry_to"`   // post transaction entries
+	Transfer    Transfer `json:"transfer"`
+	FromEntry   Entry    `json:"entry_from"` // post transaction entries
+	ToEntry     Entry    `json:"entry_to"`   // post transaction entries
+	FromAccount Account  `json:"from_account"`
+	ToAccount   Account  `json:"to_account"`
+}
+
+func addMoney(
+	ctx context.Context,
+	q *Queries,
+	accountID int64,
+	amount int64,
+) (account_ Account, err error) {
+	account_, err = q.AddAccountBalance(ctx, AddAccountBalanceParams{
+		ID:     accountID,
+		Amount: amount,
+	})
+	if err != nil {
+		return
+	}
+	return
 }
 
 func (store *Store) TransferTx(ctx context.Context, arg TransferTxParams) (TransferTxResult, error) {
 	// money transfer transaction
+	// timeString := "2022-09-24 05:10:40"
+	// theTime, _ := time.Parse("2006-01-02 03:04:05", timeString)
+	// compareTime := theTime.UnixMilli()
+
+	// fmt.Println("For transaction belonging to goroutines ", goid())
+
 	var result TransferTxResult
 	err := store.execTx(ctx, func(q *Queries) error {
 		var err error
@@ -88,8 +124,49 @@ func (store *Store) TransferTx(ctx context.Context, arg TransferTxParams) (Trans
 		if err != nil {
 			return err
 		}
-		// TODO: update account balance.
+		// var accountFrom, accountTo Account
+		// fmt.Printf("Starting fetching From Account = %d w.r.t. goroutine id = %d\n", time.Now().UnixMilli()-compareTime, goid())
+		if arg.FromAccountID < arg.ToAccountID {
+			// update FromAccountID first, since its smaller
+			result.FromAccount, err = addMoney(ctx, store.Queries, arg.FromAccountID, -arg.Amount)
+			if err != nil {
+				return err
+			}
+			// fmt.Printf("Completed updating From Account = %d w.r.t. goroutine id = %d\n", time.Now().UnixMilli()-compareTime, goid())
+
+			result.ToAccount, err = addMoney(ctx, store.Queries, arg.ToAccountID, arg.Amount)
+			if err != nil {
+				return err
+			}
+			// fmt.Printf("Completed updating To Account = %d w.r.t. goroutine id = %d\n", time.Now().UnixMilli()-compareTime, goid())
+		} else {
+			// update ToAccountID first, since its smaller
+			result.ToAccount, err = addMoney(ctx, store.Queries, arg.ToAccountID, arg.Amount)
+			if err != nil {
+				return err
+			}
+			// fmt.Printf("Completed updating To Account = %d w.r.t. goroutine id = %d\n", time.Now().UnixMilli()-compareTime, goid())
+
+			result.FromAccount, err = addMoney(ctx, store.Queries, arg.FromAccountID, -arg.Amount)
+			if err != nil {
+				return err
+			}
+			// fmt.Printf("Completed updating From Account = %d w.r.t. goroutine id = %d\n", time.Now().UnixMilli()-compareTime, goid())
+		}
+
+		// fmt.Printf("Completed updating To Account = %d w.r.t. goroutine id = %d\n", time.Now().UnixMilli()-compareTime, goid())
+
 		return nil
 	}) // this makes the callback function a closure, golang supports generics type
+	// if debug{
+	// 	fmt.Printf("Transferring from(go routine id = %d):\nInitial State:\n", goid())
+	// 	accountFrom.print()
+	// 	fmt.Printf("\nFinal State(go routine id = %d):\n", goid())
+	// 	result.FromAccount.print()
+	// 	fmt.Println("\nTransferring To:")
+	// 	result.ToAccount.print()
+	// 	fmt.Println()
+	// 	fmt.Println(strings.Repeat("-", 50))
+	// }
 	return result, err
 }
