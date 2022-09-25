@@ -263,6 +263,25 @@
         UPDATE accounts SET balance = balance - 10 WHERE id = 1 RETURNING *;
         ```
         2. Solution: Keep the update order the same across all transactions. We know accountID is an int64 , hence always update the smaller ID first, then the larger ID.
+16. Transaction Isolation Level - [MySQL]
+    1. ## Read Phenomena
+        1. Dirty Read - data written by uncommitted transaction is read by another transaction.
+        2. Non-repeatable read - before and after committing of some other transaction, this transaction reads the same rows with different value(s), due to updates made by that other transaction.
+        3. Phantom read - rows satisfying a condition in a transaction are no longer returned after another transaction is committed, due to updates made by that other transaction.
+        4. Serialization Anomaly - a result of a group of concurrent transactions couldn't be achieved if the individual transactions are run in any sequence without overlapping each other.
+17. Transaction Isolation Level - [PSQL](https://www.postgresql.org/docs/current/transaction-iso.html)
+    1. `set transaction isolation level repeatable read;`
+        1. If tx1 inserts a new row, until it commits, tx2 doesn't see it.
+        2. Now if tx2 inserts a new row before tx1(with inserted row but uncommitted), and then both are committed one after the other, we see both records entered into accounts.
+            1. What if the *same record was inserted by tx1 and tx2*(everything except id is the same) --> **duplication of records** ?
+        3. This is called ***Serialization Anomaly*** - meaning if we had run and committed tx2 before tx1, the result would've been the same.
+    2. **Note:** Transaction isolation level should be set first before calling any other query in that transaction.
+    3. Hence implement retry mechanisms.
+    4. <img src="psqlIsolations.png" />
+18. Github Action for Continuous Integrations
+    1. What is Workflow, Job, Step, Github Actions?
+    2. Configure workflow for Go.(github repo-->actions tab)
+        1. creates a new file .github/workflows/go.yml
 
 # SQLC Build<a name="sqlc_build"></a>
 1. `Dockerfile` runs `go run scripts/release.go -docker`.
