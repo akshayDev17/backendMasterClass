@@ -282,6 +282,7 @@
     1. What is Workflow, Job, Step, Github Actions?
     2. Configure workflow for Go.(github repo-->actions tab)
         1. creates a new file .github/workflows/go.yml
+    3. [Github Action docs](https://docs.github.com/en/actions)
 
 # SQLC Build<a name="sqlc_build"></a>
 1. `Dockerfile` runs `go run scripts/release.go -docker`.
