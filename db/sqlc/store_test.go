@@ -14,7 +14,7 @@ func TestTransferTx(t *testing.T) {
 	account1 := createRandomAccount(t)
 	account2 := createRandomAccount(t)
 
-	fmt.Println(">> before:", account1.Balance, account2.Balance)
+	fmt.Printf(">> before tx: balance(%d) = %d, balance(%d) = %d\n", account1.ID, account1.Balance, account2.ID, account2.Balance)
 
 	// run with concurrent go routines
 	n := 4
@@ -98,7 +98,7 @@ func TestTransferTx(t *testing.T) {
 		require.Equal(t, account2.ID, toAccount.ID)
 
 		// check account balance of FromAccountID and ToAccountID
-		fmt.Println(">> tx: ", fromAccount.Balance, toAccount.Balance)
+		fmt.Printf(">> After %d'th tx: balance(%d) = %d, balance(%d) = %d\n", i, fromAccount.ID, fromAccount.Balance, toAccount.ID, toAccount.Balance)
 		diff1 := account1.Balance - fromAccount.Balance
 		diff2 := toAccount.Balance - account2.Balance
 
