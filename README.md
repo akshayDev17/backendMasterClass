@@ -134,7 +134,8 @@
     1. Golang convention - put the test file(`account_test.go`) in the same folder as the code.
     2. created main_test.go to house the connection object to DB
         1. [`lib/pq`]() was installed since we lack a psql driver to establish a connection, the `database/sql` only provides a Golang-based interface to communicate with a pre-existing driver. \
-            Also mentioned in [Getting Started with Postgres in sqlc](https://docs.sqlc.dev/en/stable/tutorials/getting-started-postgresql.html).
+            Also mentioned in [Getting Started with Postgres in sqlc](https://docs.sqlc.dev/en/stable/tutorials/getting-started-postgresql.html). \
+            [ALSO MENTIONED IN THE SQL DATABASE DRIVERS LIST FOR GOLANG](https://github.com/golang/go/wiki/SQLDrivers)
         2. `go get lib/pq` will  fail as installing packages using go get is deprecated, use go install instead.
         3. Hence, a go mod file was created:
             ```bash
@@ -279,10 +280,18 @@
     3. Hence implement retry mechanisms.
     4. <img src="psqlIsolations.png" />
 18. Github Action for Continuous Integrations
-    1. What is Workflow, Job, Step, Github Actions?
-    2. Configure workflow for Go.(github repo-->actions tab)
+    1. Each integration of a new piece of code to the original code is verified via automated build and test.
+    2. What is Workflow, Job, Step, Github Actions?
+        1. *workflow*: made of jobs, can be triggered by an event/scheduled trigger/manual trigger. each `.yml` file in `.github/workflows` is a workflow. \
+        `on` keyword defines the trigger, in our case `ci.yml` has `push to branches master` event and also a schedule trigger.
+        2. *jobs* - each runner for each job, `jobs:` specifies the list of jobs to be run, runner-> github/self hosted \
+        `runs-on`is the runner for each specified job. github hosted `ubuntu-latest` used for running.\
+        jobs can be run parallely if not dependent on each other, else run sequentially. `needs` is used to specify this dependency.
+        3. *steps* - each job is comprised of individual tasks run sequentially.
+        4. *actions* - standalone command, run sequentially within a step such as `install golang migrate` contains 3 actions. **Actions can be reused**.
+    3. Configure workflow for Go.(github repo-->actions tab)
         1. creates a new file .github/workflows/go.yml
-    3. [Github Action docs](https://docs.github.com/en/actions)
+    4. [Github Action docs](https://docs.github.com/en/actions)
         1. `ci.yml` tells us that even `go.sum` is required for managing dependencies.
             1. Difference between `run` and `uses`?(while defining a step)
         2. this tells us that the github action was unable to connect to postgres DB.
@@ -342,6 +351,94 @@
     1. Say in the [experiment-2 example(migrations-related)](#exp2_db_migration), `first-state = DB{accounts}`, `second-state = DB{accounts, entries}`, `third-state = DB{accounts, entries, transfers}`.
     2. States are denoted by the `schema_migrations` table, with a column called `version`.
     3. Version control for Databases.
+
+# Context in Input and output HTTP requests<a name="context"></a>
+1. `context.Background()` --> returns `background` --> from `new(emptyCtx)` which is a type int having many supplementary functions implemented on it.
+2. `Context` is rather an interface having `Deadline, Done, Err, Value` as the methods to be implemented.
+
+# sql methods
+
+## `sql.Open()`<a name="sql_Open"></a>
+- needs driverName and dataSourceName.
+    - in our testDB case, we give this as `postgres` and the complete uri to our `simple_bank` db. 
+- the last line of the docstring of this function reads
+    > // The returned DB is safe for concurrent use by multiple goroutines \
+    // and maintains its own pool of idle connections. Thus, the Open \
+    // function should be called just once. It is rarely necessary to \
+    // close a DB. 
+- `driversMu.RLock()` is triggered
+    - `driversMu` is a variable of type `sync.RWMutex`(read-write mutex, like the reader-writer's problem)
+        - it is initialized such that all fields are 0.
+    - initially Enabled(an enum from the race package) is set to false, hence code goes to `atomic.AddInt32`
+    - the hashmap drivers is also empty initialized, but *somewhere it gets filled with the key-value pair `postgres-<postgres/driver/address>`*
+    - Register() needs to be called w.r.t. a driver so that this driver object can be fed into the map.
+        - for instance, the `sql_test.go` and `fakedb_test.go` calls the `Register()` function in their `init()` function bodies.
+        - *probably  the lib/pq package could call the Register function*
+            - > When they say 'import side effects' they are essentially referring to code/features that are used statically. \
+            Meaning just the import of the package will cause some code to execute on app start putting my system in a state \
+            different than it would be without having imported that package (like code in an init() which in their example \
+            registers handlers, it could also lay down config files, modify resource on disc, ect).
+            - [`init()`](https://go.dev/doc/effective_go#init) function is triggered as explained in Effective Go.
+            - this `init()` function in [lib/pq/conn.go](https://github.com/lib/pq/blob/d5affd5073b06f745459768de35356df2e5fd91d/conn.go#L59) registers the postgres driver.
+            - `lib/pq` implements its own Driver class on the basis of the `Driver interface` provided in `database/sql/driver/driver.go` , and the `Open()` interface method is implemented on [this line of `conn.go`](https://github.com/lib/pq/blob/d5affd5073b06f745459768de35356df2e5fd91d/conn.go#L55).
+            - for some reason, map assignment gives us an address, but in itself it returns an empty struct.
+            ```go
+            type MyDriver interface {
+                MyOpen(name string) (int64, error)
+            }
+
+            type MyDriverStruct struct{}
+
+            var (
+                mydrivers = make(map[string]MyDriver)
+            )
+
+            func (d MyDriverStruct) MyOpen(name string) (int64, error) {
+                return int64(10), nil
+            }
+
+            func myRegister(name string, driver MyDriver) {
+                mydrivers[name] = driver
+            }
+
+            func main() {
+                fmt.Println("Before anything:", mydrivers) // Before anything: map[]
+                myRegister("myDBName", &MyDriverStruct{})
+                fmt.Println("After assignment:", mydrivers) // After assignment: map[myDBName:0x10139f430]
+                fmt.Println(reflect.TypeOf(mydrivers["myDBName"])) // *main.MyDriverStruct
+
+                var x = &MyDriverStruct{}
+	            fmt.Println(reflect.TypeOf(x), "\t", *x, "\t", x) // *main.MyDriverStruct     {}      &{}
+            }
+            ```
+- the hashmap drivers is checked
+    - key = `string`, value = object belonging to the `driver.Driver` interface.
+
+## `db.conn()`
+1. obtain mutex lock on `db` of type struct `DB`.
+    1. read about atomic functions [here](https://pkg.go.dev/sync/atomic).
+    2. mutex 2 properties: state and sema(semaphore)
+    3. For testing purposes, in main_test.go, we had defined a `testQueries` object of type `Queries` struct.
+        1. its corresponding testDB was defined using [`testDB, err = sql.Open(dbDriver, dbSource)`](#sql_Open)
+### `cachedOrNewConn` as the strategy
+1. 
+### `alwaysNewConn` as the strategy
+1. 
+
+## `QueryRow()`
+1. defined in `go/1.19/libexec/src/database/sql/sql.go`
+2. implemented for all types: `DB, Tx, Conn`.
+3. [`background`](#context) context is used.
+3. returns `*Rows`
+4. executes the `.query()` method.
+    1. `cachedOrNewConn` connReuseStrategy was used, which is a const.
+    2. is executed twice(`const maxBadConnRetries = 2`), failing this, query is used with `alwaysNewConn` `connReuseStrategy`.
+
+
+## `QueryRowContext()`
+1. returns sql.Row type(struct with `error` and `*Rows` as properties)
+2. defined in `go/1.19/libexec/src/database/sql/sql.go`
+3. implemented for all types: `DB, Tx, Conn`.
 
 # Experiments to be RUN<a name="experiments"></a>
 
